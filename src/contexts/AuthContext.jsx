@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../config/firebase';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext(null);
 
@@ -14,15 +14,22 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
-                const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-                if (userDoc.exists() && userDoc.data().role === 'admin') {
-                    setUser(firebaseUser);
-                    setAdminData({ id: userDoc.id, ...userDoc.data() });
-                } else {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+                    if (userDoc.exists() && userDoc.data().role === 'admin') {
+                        setUser(firebaseUser);
+                        setAdminData({ id: userDoc.id, ...userDoc.data() });
+                    } else {
+                        await signOut(auth);
+                        setUser(null);
+                        setAdminData(null);
+                        setError('Access denied. Admin privileges required.');
+                    }
+                } catch (err) {
+                    console.error('Auth state check error:', err);
                     await signOut(auth);
                     setUser(null);
                     setAdminData(null);
-                    setError('Access denied. Admin privileges required.');
                 }
             } else {
                 setUser(null);
@@ -33,6 +40,7 @@ export function AuthProvider({ children }) {
         return unsub;
     }, []);
 
+    // ── Sign in existing admin ────────────────────────────────
     const login = async (email, password) => {
         setError(null);
         setLoading(true);
@@ -42,20 +50,13 @@ export function AuthProvider({ children }) {
             try {
                 userDoc = await getDoc(doc(db, 'users', cred.user.uid));
             } catch (firestoreErr) {
-                // Firestore permission error or missing collection
                 console.error('Firestore read error:', firestoreErr);
                 await signOut(auth);
-                throw new Error(
-                    'Unable to verify admin access. Please make sure your admin user document exists in the Firestore "users" collection with role: "admin".'
-                );
+                throw new Error('Unable to verify admin access. Check Firestore rules.');
             }
             if (!userDoc.exists()) {
                 await signOut(auth);
-                throw new Error(
-                    'Admin profile not found. Please create a user document in Firestore with your UID (' +
-                    cred.user.uid +
-                    ') and set role to "admin".'
-                );
+                throw new Error('Admin profile not found. Please create your account first using the "Create Account" tab.');
             }
             if (userDoc.data().role !== 'admin') {
                 await signOut(auth);
@@ -65,11 +66,56 @@ export function AuthProvider({ children }) {
             setAdminData({ id: userDoc.id, ...userDoc.data() });
         } catch (err) {
             let message = err.message;
-            // Map Firebase error codes to friendly messages
             if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
                 message = 'Invalid email or password.';
             } else if (err.code === 'auth/too-many-requests') {
-                message = 'Too many login attempts. Please try again later.';
+                message = 'Too many attempts. Please try again later.';
+            } else if (err.code === 'auth/invalid-email') {
+                message = 'Please enter a valid email address.';
+            }
+            setError(message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ── Create a new admin account ────────────────────────────
+    const createAdmin = async (name, email, password) => {
+        setError(null);
+        setLoading(true);
+        try {
+            // 1. Create Firebase Auth user
+            const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+            // 2. Create Firestore admin document
+            await setDoc(doc(db, 'users', cred.user.uid), {
+                uid: cred.user.uid,
+                name: name,
+                email: email,
+                role: 'admin',
+                status: 'active',
+                fcmTokens: [],
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+
+            // 3. Set local state (auto-logged-in)
+            setUser(cred.user);
+            setAdminData({
+                id: cred.user.uid,
+                uid: cred.user.uid,
+                name,
+                email,
+                role: 'admin',
+                status: 'active',
+            });
+        } catch (err) {
+            let message = err.message;
+            if (err.code === 'auth/email-already-in-use') {
+                message = 'This email is already registered. Please sign in instead.';
+            } else if (err.code === 'auth/weak-password') {
+                message = 'Password must be at least 6 characters.';
             } else if (err.code === 'auth/invalid-email') {
                 message = 'Please enter a valid email address.';
             }
@@ -87,7 +133,7 @@ export function AuthProvider({ children }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, adminData, loading, error, login, logout, setError }}>
+        <AuthContext.Provider value={{ user, adminData, loading, error, login, createAdmin, logout, setError }}>
             {children}
         </AuthContext.Provider>
     );

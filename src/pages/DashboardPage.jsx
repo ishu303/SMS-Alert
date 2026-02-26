@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import {
     Users, Bell, Eye, MousePointerClick,
-    TrendingUp, TrendingDown, ArrowUpRight
+    TrendingUp, ArrowUpRight
 } from 'lucide-react';
 import {
-    AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+    AreaChart, Area, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 const COLORS = ['#6c63ff', '#00d2ff', '#ff6b6b', '#ffab40', '#00e676', '#9c27b0', '#e91e63', '#795548'];
 
+// Course ID → Display name
+const COURSE_NAMES = {
+    MBA: 'MBA', MCA: 'MCA', MCOM: 'M.COM', BBA: 'BBA', BCA: 'BCA',
+    BCOMH: 'B.COM (HONS)', BAMASS: 'B.A.HONS (MASS COMM)',
+};
+
 const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
         <div style={{
-            background: '#1e2340',
-            border: '1px solid #2a3052',
-            borderRadius: 12,
-            padding: '12px 16px',
+            background: '#1e2340', border: '1px solid #2a3052',
+            borderRadius: 12, padding: '12px 16px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
         }}>
             <p style={{ color: '#b0bec5', fontSize: 12, marginBottom: 6 }}>{label}</p>
@@ -36,45 +40,44 @@ export default function DashboardPage() {
     const [stats, setStats] = useState({
         totalStudents: 0,
         activeStudents: 0,
-        blockedStudents: 0,
         totalNotifications: 0,
-        totalDelivered: 0,
+        totalRecipients: 0,
         totalOpened: 0,
         totalClicked: 0,
     });
-    const [branchData, setBranchData] = useState([]);
+    const [courseData, setCourseData] = useState([]);
     const [notifTrends, setNotifTrends] = useState([]);
     const [recentNotifications, setRecentNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadDashboard();
-    }, []);
+    useEffect(() => { loadDashboard(); }, []);
 
     const loadDashboard = async () => {
         try {
-            // Load users
+            // ── Load users ──────────────────────────────────────
             const usersSnap = await getDocs(collection(db, 'users'));
-            let totalStudents = 0, activeStudents = 0, blockedStudents = 0;
-            const branches = {};
+            let totalStudents = 0, activeStudents = 0;
+            const courses = {};
 
             usersSnap.forEach(doc => {
                 const user = doc.data();
                 if (user.role === 'student' || user.role === 'guest') {
                     totalStudents++;
                     if (user.status === 'active') activeStudents++;
-                    if (user.status === 'blocked') blockedStudents++;
-                    if (user.branch) {
-                        branches[user.branch] = (branches[user.branch] || 0) + 1;
+                    const courseName = COURSE_NAMES[user.course] || user.course || 'Other';
+                    if (courseName) {
+                        courses[courseName] = (courses[courseName] || 0) + 1;
                     }
                 }
             });
 
-            setBranchData(
-                Object.entries(branches).map(([name, value]) => ({ name, value }))
+            setCourseData(
+                Object.entries(courses)
+                    .map(([name, value]) => ({ name, value }))
+                    .sort((a, b) => b.value - a.value)
             );
 
-            // Load notifications (last 30 days)
+            // ── Load notifications (last 30 days) ──────────────
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -86,26 +89,29 @@ export default function DashboardPage() {
                 )
             );
 
-            let totalNotifications = 0, totalDelivered = 0, totalOpened = 0, totalClicked = 0;
+            let totalNotifications = 0, totalRecipients = 0, totalOpened = 0, totalClicked = 0;
             const dailyStats = {};
             const recent = [];
 
             notifsSnap.forEach(doc => {
                 const notif = doc.data();
                 totalNotifications++;
-                if (notif.analytics) {
-                    totalDelivered += notif.analytics.delivered || 0;
-                    totalOpened += notif.analytics.opened || 0;
-                    totalClicked += notif.analytics.clicked || 0;
-                }
+
+                const recipients = notif.analytics?.totalRecipients || 0;
+                const opened = notif.analytics?.opened || 0;
+                const clicked = notif.analytics?.clicked || 0;
+
+                totalRecipients += recipients;
+                totalOpened += opened;
+                totalClicked += clicked;
 
                 if (notif.sentAt) {
                     const date = notif.sentAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     if (!dailyStats[date]) {
-                        dailyStats[date] = { date, sent: 0, opened: 0 };
+                        dailyStats[date] = { date, sent: 0, recipients: 0 };
                     }
                     dailyStats[date].sent++;
-                    dailyStats[date].opened += notif.analytics?.opened || 0;
+                    dailyStats[date].recipients += recipients;
                 }
 
                 if (recent.length < 5) {
@@ -116,8 +122,8 @@ export default function DashboardPage() {
             setNotifTrends(Object.values(dailyStats).reverse().slice(-14));
             setRecentNotifications(recent);
             setStats({
-                totalStudents, activeStudents, blockedStudents,
-                totalNotifications, totalDelivered, totalOpened, totalClicked,
+                totalStudents, activeStudents,
+                totalNotifications, totalRecipients, totalOpened, totalClicked,
             });
         } catch (err) {
             console.error('Dashboard load error:', err);
@@ -135,9 +141,10 @@ export default function DashboardPage() {
         );
     }
 
-    const avgOpenRate = stats.totalDelivered > 0
-        ? ((stats.totalOpened / stats.totalDelivered) * 100).toFixed(1)
-        : 0;
+    // Open rate based on totalRecipients (not delivered)
+    const avgOpenRate = stats.totalRecipients > 0
+        ? ((stats.totalOpened / stats.totalRecipients) * 100).toFixed(1)
+        : '0.0';
 
     return (
         <div>
@@ -154,7 +161,7 @@ export default function DashboardPage() {
                     <div className="stat-icon primary"><Users /></div>
                     <div className="stat-info">
                         <div className="stat-value">{stats.totalStudents}</div>
-                        <div className="stat-label">Total Students</div>
+                        <div className="stat-label">Total Users</div>
                         <span className="stat-change up">
                             <TrendingUp size={12} /> {stats.activeStudents} active
                         </span>
@@ -167,7 +174,7 @@ export default function DashboardPage() {
                         <div className="stat-value">{stats.totalNotifications}</div>
                         <div className="stat-label">Notifications Sent</div>
                         <span className="stat-change up">
-                            <ArrowUpRight size={12} /> Last 30 days
+                            <ArrowUpRight size={12} /> {stats.totalRecipients} total recipients
                         </span>
                     </div>
                 </div>
@@ -211,7 +218,7 @@ export default function DashboardPage() {
                                         <stop offset="5%" stopColor="#6c63ff" stopOpacity={0.3} />
                                         <stop offset="95%" stopColor="#6c63ff" stopOpacity={0} />
                                     </linearGradient>
-                                    <linearGradient id="gradOpened" x1="0" y1="0" x2="0" y2="1">
+                                    <linearGradient id="gradRecip" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#00e676" stopOpacity={0.3} />
                                         <stop offset="95%" stopColor="#00e676" stopOpacity={0} />
                                     </linearGradient>
@@ -222,41 +229,47 @@ export default function DashboardPage() {
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 <Area type="monotone" dataKey="sent" stroke="#6c63ff" fill="url(#gradSent)" strokeWidth={2} name="Sent" />
-                                <Area type="monotone" dataKey="opened" stroke="#00e676" fill="url(#gradOpened)" strokeWidth={2} name="Opened" />
+                                <Area type="monotone" dataKey="recipients" stroke="#00e676" fill="url(#gradRecip)" strokeWidth={2} name="Recipients" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                {/* Branch Distribution */}
+                {/* Course Distribution */}
                 <div className="card">
                     <div className="chart-header">
-                        <h3 className="chart-title">Branch Distribution</h3>
+                        <h3 className="chart-title">Course Distribution</h3>
                     </div>
                     <div className="chart-container">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={branchData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={100}
-                                    paddingAngle={4}
-                                    dataKey="value"
-                                >
-                                    {branchData.map((_, index) => (
-                                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend
-                                    verticalAlign="bottom"
-                                    height={36}
-                                    formatter={(value) => <span style={{ color: '#b0bec5', fontSize: 12 }}>{value}</span>}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
+                        {courseData.length === 0 ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-tertiary)', fontSize: 14 }}>
+                                No student data yet
+                            </div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={courseData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={4}
+                                        dataKey="value"
+                                    >
+                                        {courseData.map((_, index) => (
+                                            <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Legend
+                                        verticalAlign="bottom"
+                                        height={36}
+                                        formatter={(value) => <span style={{ color: '#b0bec5', fontSize: 12 }}>{value}</span>}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
             </div>
@@ -280,8 +293,8 @@ export default function DashboardPage() {
                                 <tr>
                                     <th>Title</th>
                                     <th>Type</th>
+                                    <th>Audience</th>
                                     <th>Recipients</th>
-                                    <th>Delivered</th>
                                     <th>Opened</th>
                                     <th>Sent At</th>
                                 </tr>
@@ -296,8 +309,14 @@ export default function DashboardPage() {
                                                 {n.type}
                                             </span>
                                         </td>
+                                        <td>
+                                            <span className="badge badge-muted">
+                                                {n.targetAudience?.type === 'course'
+                                                    ? (n.targetAudience.courses || []).map(c => COURSE_NAMES[c] || c).join(', ')
+                                                    : n.targetAudience?.type || 'all'}
+                                            </span>
+                                        </td>
                                         <td>{n.analytics?.totalRecipients || 0}</td>
-                                        <td>{n.analytics?.delivered || 0}</td>
                                         <td>{n.analytics?.opened || 0}</td>
                                         <td>{n.sentAt?.toDate?.().toLocaleDateString() || '—'}</td>
                                     </tr>

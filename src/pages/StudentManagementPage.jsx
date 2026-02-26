@@ -14,7 +14,7 @@ export default function StudentManagementPage() {
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterBranch, setFilterBranch] = useState('all');
+    const [filterCourse, setFilterCourse] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [showModal, setShowModal] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
@@ -85,13 +85,22 @@ export default function StudentManagementPage() {
             s.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             s.rollNumber?.toLowerCase().includes(searchQuery.toLowerCase());
 
-        const matchesBranch = filterBranch === 'all' || s.branch === filterBranch;
+        const matchesCourse = filterCourse === 'all' || s.course === filterCourse;
         const matchesStatus = filterStatus === 'all' || s.status === filterStatus;
 
-        return matchesSearch && matchesBranch && matchesStatus;
+        return matchesSearch && matchesCourse && matchesStatus;
     });
 
-    const branches = [...new Set(students.map(s => s.branch).filter(Boolean))];
+    const COURSES = [
+        { id: 'MBA', name: 'MBA' },
+        { id: 'MCA', name: 'MCA' },
+        { id: 'MCOM', name: 'M.COM' },
+        { id: 'BBA', name: 'BBA' },
+        { id: 'BCA', name: 'BCA' },
+        { id: 'BCOMH', name: 'B.COM (HONS)' },
+        { id: 'BAMASS', name: 'B.A.HONS (MASS COMM)' },
+    ];
+    const courseNameMap = Object.fromEntries(COURSES.map(c => [c.id, c.name]));
 
     return (
         <div>
@@ -119,12 +128,12 @@ export default function StudentManagementPage() {
                     </div>
                     <select
                         className="filter-select"
-                        value={filterBranch}
-                        onChange={(e) => setFilterBranch(e.target.value)}
+                        value={filterCourse}
+                        onChange={(e) => setFilterCourse(e.target.value)}
                     >
-                        <option value="all">All Branches</option>
-                        {branches.map(b => (
-                            <option key={b} value={b}>{b}</option>
+                        <option value="all">All Courses</option>
+                        {COURSES.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                     </select>
                     <select
@@ -162,8 +171,8 @@ export default function StudentManagementPage() {
                                 <tr>
                                     <th>Student</th>
                                     <th>Roll Number</th>
-                                    <th>Branch</th>
-                                    <th>Year</th>
+                                    <th>Course</th>
+                                    <th>Batch</th>
                                     <th>Role</th>
                                     <th>Status</th>
                                     <th>Actions</th>
@@ -179,15 +188,15 @@ export default function StudentManagementPage() {
                                                 </div>
                                                 <div>
                                                     <div className="user-name">{student.name || 'Unnamed'}</div>
-                                                    <div className="user-email">{student.email || student.phone || '—'}</div>
+                                                    <div className="user-email">{student.email || '—'}</div>
                                                 </div>
                                             </div>
                                         </td>
                                         <td style={{ fontFamily: 'monospace', letterSpacing: 0.5 }}>
                                             {student.rollNumber || '—'}
                                         </td>
-                                        <td>{student.branch || '—'}</td>
-                                        <td>{student.year || '—'}</td>
+                                        <td>{courseNameMap[student.course] || student.course || '—'}</td>
+                                        <td>{student.entranceYear && student.passOutYear ? `${student.entranceYear}–${student.passOutYear}` : '—'}</td>
                                         <td>
                                             <span className={`badge ${student.role === 'admin' ? 'badge-warning' : student.role === 'student' ? 'badge-primary' : 'badge-muted'}`}>
                                                 {student.role || 'guest'}

@@ -78,7 +78,9 @@
 }
 
 /* ─── Reset & Base ─── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -126,7 +128,9 @@ button {
   outline: none;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: inherit;
   outline: none;
 }
@@ -175,7 +179,9 @@ input, select, textarea {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ─── Login Page ─── */
@@ -229,6 +235,7 @@ input, select, textarea {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -320,9 +327,19 @@ input, select, textarea {
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-4px);
+  }
+
+  75% {
+    transform: translateX(4px);
+  }
 }
 
 /* ─── Buttons ─── */
@@ -697,10 +714,21 @@ input, select, textarea {
   box-shadow: var(--shadow-elevated);
 }
 
-.stat-card.primary::after { background: var(--primary); }
-.stat-card.success::after { background: var(--success); }
-.stat-card.warning::after { background: var(--warning); }
-.stat-card.accent::after { background: var(--accent); }
+.stat-card.primary::after {
+  background: var(--primary);
+}
+
+.stat-card.success::after {
+  background: var(--success);
+}
+
+.stat-card.warning::after {
+  background: var(--warning);
+}
+
+.stat-card.accent::after {
+  background: var(--accent);
+}
 
 .stat-icon {
   width: 48px;
@@ -712,11 +740,30 @@ input, select, textarea {
   justify-content: center;
 }
 
-.stat-icon.primary { background: var(--primary-alpha-10); color: var(--primary); }
-.stat-icon.success { background: var(--success-alpha-10); color: var(--success); }
-.stat-icon.warning { background: var(--warning-alpha-10); color: var(--warning); }
-.stat-icon.accent { background: var(--accent-alpha-10); color: var(--accent); }
-.stat-icon.error { background: var(--error-alpha-10); color: var(--error); }
+.stat-icon.primary {
+  background: var(--primary-alpha-10);
+  color: var(--primary);
+}
+
+.stat-icon.success {
+  background: var(--success-alpha-10);
+  color: var(--success);
+}
+
+.stat-icon.warning {
+  background: var(--warning-alpha-10);
+  color: var(--warning);
+}
+
+.stat-icon.accent {
+  background: var(--accent-alpha-10);
+  color: var(--accent);
+}
+
+.stat-icon.error {
+  background: var(--error-alpha-10);
+  color: var(--error);
+}
 
 .stat-icon svg {
   width: 24px;
@@ -853,12 +900,35 @@ input, select, textarea {
   white-space: nowrap;
 }
 
-.badge-primary { background: var(--primary-alpha-10); color: var(--primary); }
-.badge-success { background: var(--success-alpha-10); color: var(--success); }
-.badge-warning { background: var(--warning-alpha-10); color: var(--warning); }
-.badge-error { background: var(--error-alpha-10); color: var(--error); }
-.badge-accent { background: var(--accent-alpha-10); color: var(--accent); }
-.badge-muted { background: rgba(120, 144, 156, 0.1); color: var(--text-tertiary); }
+.badge-primary {
+  background: var(--primary-alpha-10);
+  color: var(--primary);
+}
+
+.badge-success {
+  background: var(--success-alpha-10);
+  color: var(--success);
+}
+
+.badge-warning {
+  background: var(--warning-alpha-10);
+  color: var(--warning);
+}
+
+.badge-error {
+  background: var(--error-alpha-10);
+  color: var(--error);
+}
+
+.badge-accent {
+  background: var(--accent-alpha-10);
+  color: var(--accent);
+}
+
+.badge-muted {
+  background: rgba(120, 144, 156, 0.1);
+  color: var(--text-tertiary);
+}
 
 .badge-dot {
   width: 6px;
@@ -1050,10 +1120,21 @@ input, select, textarea {
   flex-shrink: 0;
 }
 
-.user-avatar.grad-1 { background: linear-gradient(135deg, #6c63ff, #00d2ff); }
-.user-avatar.grad-2 { background: linear-gradient(135deg, #ff6b6b, #ffa502); }
-.user-avatar.grad-3 { background: linear-gradient(135deg, #00e676, #00bcd4); }
-.user-avatar.grad-4 { background: linear-gradient(135deg, #9c27b0, #e91e63); }
+.user-avatar.grad-1 {
+  background: linear-gradient(135deg, #6c63ff, #00d2ff);
+}
+
+.user-avatar.grad-2 {
+  background: linear-gradient(135deg, #ff6b6b, #ffa502);
+}
+
+.user-avatar.grad-3 {
+  background: linear-gradient(135deg, #00e676, #00bcd4);
+}
+
+.user-avatar.grad-4 {
+  background: linear-gradient(135deg, #9c27b0, #e91e63);
+}
 
 .user-name {
   font-weight: 600;
@@ -1135,10 +1216,25 @@ input, select, textarea {
   height: 22px;
 }
 
-.notif-type-icon.announcement { background: var(--primary-alpha-10); color: var(--primary); }
-.notif-type-icon.exam { background: var(--accent-alpha-10); color: var(--accent); }
-.notif-type-icon.event { background: rgba(156, 39, 176, 0.1); color: #ce93d8; }
-.notif-type-icon.emergency { background: var(--error-alpha-10); color: var(--error); }
+.notif-type-icon.announcement {
+  background: var(--primary-alpha-10);
+  color: var(--primary);
+}
+
+.notif-type-icon.exam {
+  background: var(--accent-alpha-10);
+  color: var(--accent);
+}
+
+.notif-type-icon.event {
+  background: rgba(156, 39, 176, 0.1);
+  color: #ce93d8;
+}
+
+.notif-type-icon.emergency {
+  background: var(--error-alpha-10);
+  color: var(--error);
+}
 
 .notif-content {
   flex: 1;
@@ -1270,8 +1366,13 @@ input, select, textarea {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .modal {
@@ -1290,6 +1391,7 @@ input, select, textarea {
     opacity: 0;
     transform: scale(0.95) translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
