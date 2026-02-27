@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db } from '../config/firebase';
-import { collection, getDocs, query, orderBy, limit, startAfter, where } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, startAfter, where, doc, deleteDoc } from 'firebase/firestore';
 import {
     Bell, Megaphone, GraduationCap, CalendarDays, AlertTriangle,
-    Users, Eye, MousePointerClick, Clock, ChevronDown
+    Eye, MousePointerClick, Clock, ChevronDown, Trash2
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const TYPE_CONFIG = {
     announcement: { icon: Megaphone, className: 'announcement', label: 'Announcement' },
@@ -13,12 +14,19 @@ const TYPE_CONFIG = {
     emergency: { icon: AlertTriangle, className: 'emergency', label: 'Emergency' },
 };
 
+const COURSE_NAMES = {
+    MBA: 'MBA', MCA: 'MCA', MCOM: 'M.COM', BBA: 'BBA', BCA: 'BCA',
+    BCOMH: 'B.COM (HONS)', BAMASS: 'B.A.HONS (MASS COMM)',
+};
+
 export default function NotificationHistoryPage() {
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
     const [lastDoc, setLastDoc] = useState(null);
     const [hasMore, setHasMore] = useState(true);
+    const [deleteModal, setDeleteModal] = useState(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         loadNotifications(true);
@@ -27,7 +35,6 @@ export default function NotificationHistoryPage() {
     const loadNotifications = async (fresh = false) => {
         setLoading(true);
         try {
-            let q;
             const constraints = [
                 orderBy('sentAt', 'desc'),
                 limit(15),
@@ -41,10 +48,10 @@ export default function NotificationHistoryPage() {
                 constraints.push(startAfter(lastDoc));
             }
 
-            q = query(collection(db, 'notifications'), ...constraints);
+            const q = query(collection(db, 'notifications'), ...constraints);
             const snap = await getDocs(q);
 
-            const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
             if (fresh) {
                 setNotifications(items);
@@ -61,13 +68,31 @@ export default function NotificationHistoryPage() {
         }
     };
 
-    const formatDate = (timestamp) => {
-        if (!timestamp?.toDate) return '—';
-        const date = timestamp.toDate();
-        return date.toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-        });
+    // ── Delete notification ──────────────────────────────────────
+    const handleDelete = async (notifId) => {
+        setDeleting(true);
+        try {
+            await deleteDoc(doc(db, 'notifications', notifId));
+            setNotifications(prev => prev.filter(n => n.id !== notifId));
+            toast.success('Notification deleted');
+        } catch (err) {
+            console.error('Delete error:', err);
+            toast.error('Failed to delete notification');
+        } finally {
+            setDeleting(false);
+            setDeleteModal(null);
+        }
+    };
+
+    const formatAudience = (notif) => {
+        const ta = notif.targetAudience;
+        if (!ta) return 'All';
+        if (ta.type === 'course' && ta.courses?.length) {
+            return ta.courses.map(c => COURSE_NAMES[c] || c).join(', ');
+        }
+        if (ta.type === 'students') return 'All Students';
+        if (ta.type === 'guest') return 'Guests Only';
+        return 'All';
     };
 
     const timeAgo = (timestamp) => {
@@ -143,8 +168,8 @@ export default function NotificationHistoryPage() {
                                             <span className="badge-dot" />
                                             {typeConfig.label}
                                         </span>
-                                        <span className={`badge badge-${notif.priority === 'urgent' ? 'error' : notif.priority === 'high' ? 'warning' : 'muted'}`}>
-                                            {notif.priority}
+                                        <span className="badge badge-muted">
+                                            {formatAudience(notif)}
                                         </span>
                                         <span className="notif-meta-item">
                                             <Clock size={14} /> {timeAgo(notif.sentAt)}
@@ -161,12 +186,6 @@ export default function NotificationHistoryPage() {
                                     </div>
                                     <div className="notif-stat">
                                         <div className="notif-stat-value" style={{ color: 'var(--success)' }}>
-                                            {notif.analytics?.delivered || 0}
-                                        </div>
-                                        <div className="notif-stat-label">Delivered</div>
-                                    </div>
-                                    <div className="notif-stat">
-                                        <div className="notif-stat-value" style={{ color: 'var(--accent)' }}>
                                             {notif.analytics?.opened || 0}
                                         </div>
                                         <div className="notif-stat-label">Opened</div>
@@ -177,6 +196,15 @@ export default function NotificationHistoryPage() {
                                         </div>
                                         <div className="notif-stat-label">Clicked</div>
                                     </div>
+                                    {/* Delete button */}
+                                    <button
+                                        className="action-btn danger"
+                                        title="Delete notification"
+                                        onClick={() => setDeleteModal(notif)}
+                                        style={{ marginLeft: 8 }}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -204,6 +232,42 @@ export default function NotificationHistoryPage() {
                             </button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteModal && (
+                <div className="modal-overlay" onClick={() => setDeleteModal(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Delete Notification</h3>
+                            <button className="btn-icon" onClick={() => setDeleteModal(null)}>✕</button>
+                        </div>
+
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
+                            Are you sure you want to delete <strong>"{deleteModal.title}"</strong>?
+                            This will permanently remove it from all students' feeds.
+                        </p>
+
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={() => setDeleteModal(null)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-danger"
+                                disabled={deleting}
+                                onClick={() => handleDelete(deleteModal.id)}
+                            >
+                                {deleting ? (
+                                    <span className="loading-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                                ) : (
+                                    <>
+                                        <Trash2 size={16} /> Delete
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

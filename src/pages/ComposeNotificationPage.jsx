@@ -65,6 +65,7 @@ export default function ComposeNotificationPage() {
     const [uploadProgress, setUploadProgress] = useState(null); // 0-100
     const [sending, setSending] = useState(false);
     const [result, setResult] = useState(null);
+    const [showConfirm, setShowConfirm] = useState(false);
     const fileInputRef = useRef(null);
 
     const handleChange = (field, value) => {
@@ -112,6 +113,7 @@ export default function ComposeNotificationPage() {
             try {
                 storageRef = ref(storage, path);
             } catch (err) {
+                console.error('Storage init error:', err);
                 reject(new Error('Firebase Storage is not configured. Please enable Storage in Firebase Console first.'));
                 return;
             }
@@ -148,8 +150,8 @@ export default function ComposeNotificationPage() {
         });
     };
 
-    // ── Send ──────────────────────────────────────────────────
-    const handleSend = async (e) => {
+    // ── Validate then show confirm modal ─────────────────────
+    const handleFormSubmit = (e) => {
         e.preventDefault();
 
         if (!form.title.trim() || !form.body.trim()) {
@@ -160,6 +162,20 @@ export default function ComposeNotificationPage() {
             toast.error('Please select at least one course');
             return;
         }
+        setShowConfirm(true);
+    };
+
+    const audienceLabel = () => {
+        if (form.audienceType === 'all') return 'Everyone (students + guests)';
+        if (form.audienceType === 'students') return 'All Students';
+        if (form.audienceType === 'guest') return 'Guests Only';
+        if (form.audienceType === 'course') return form.courses.map(c => COURSES.find(x => x.id === c)?.name || c).join(', ');
+        return 'All';
+    };
+
+    // ── Actual send ──────────────────────────────────────────
+    const handleSend = async () => {
+        setShowConfirm(false);
 
         setSending(true);
         setResult(null);
@@ -239,7 +255,7 @@ export default function ComposeNotificationPage() {
             </div>
 
             <div className="compose-container">
-                <form className="card compose-form" onSubmit={handleSend}>
+                <form className="card compose-form" onSubmit={handleFormSubmit}>
 
                     {/* Result banner */}
                     {result && (
@@ -416,6 +432,51 @@ export default function ComposeNotificationPage() {
                     )}
                 </form>
             </div>
+
+            {/* Confirmation Modal */}
+            {showConfirm && (
+                <div className="modal-overlay" onClick={() => setShowConfirm(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3 className="modal-title">Confirm Notification</h3>
+                            <button className="btn-icon" onClick={() => setShowConfirm(false)}>✕</button>
+                        </div>
+
+                        <div style={{ marginBottom: 20 }}>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 12 }}>
+                                Are you sure you want to send this notification? It will be instantly visible in the student app.
+                            </p>
+
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+                                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                                    <span style={{ color: 'var(--text-tertiary)', display: 'inline-block', width: 70 }}>Title:</span>
+                                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{form.title}</span>
+                                </div>
+                                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                                    <span style={{ color: 'var(--text-tertiary)', display: 'inline-block', width: 70 }}>Audience:</span>
+                                    <span style={{ color: 'var(--accent)' }}>{audienceLabel()}</span>
+                                </div>
+                                <div style={{ fontSize: 13 }}>
+                                    <span style={{ color: 'var(--text-tertiary)', display: 'inline-block', width: 70 }}>Type:</span>
+                                    <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>{form.type}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSend}
+                            >
+                                <Send size={16} /> Send Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

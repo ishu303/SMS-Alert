@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { db, functions } from '../config/firebase';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
+import { db } from '../config/firebase';
+import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import {
     Search, UserPlus, Shield, ShieldOff, UserX,
     MoreVertical, Filter, Users
@@ -24,14 +23,11 @@ export default function StudentManagementPage() {
     }, []);
 
     const loadStudents = async () => {
-        setLoading(true);
         try {
-            const q = query(
-                collection(db, 'users'),
-                orderBy('createdAt', 'desc')
+            const snap = await getDocs(
+                query(collection(db, 'users'), orderBy('createdAt', 'desc'))
             );
-            const snap = await getDocs(q);
-            setStudents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         } catch (err) {
             console.error('Error loading students:', err);
             toast.error('Failed to load students');
@@ -43,12 +39,15 @@ export default function StudentManagementPage() {
     const handleRoleChange = async (userId, role) => {
         setActionLoading(true);
         try {
-            const setUserRole = httpsCallable(functions, 'setUserRole');
-            await setUserRole({ userId, role });
+            await updateDoc(doc(db, 'users', userId), {
+                role,
+                updatedAt: serverTimestamp(),
+            });
             toast.success(`Role updated to ${role}`);
             await loadStudents();
         } catch (err) {
-            toast.error(err.message || 'Failed to update role');
+            console.error('Role change error:', err);
+            toast.error('Failed to update role. Check Firestore rules.');
         } finally {
             setActionLoading(false);
             setShowModal(null);
@@ -58,12 +57,15 @@ export default function StudentManagementPage() {
     const handleStatusChange = async (userId, status) => {
         setActionLoading(true);
         try {
-            const setUserRole = httpsCallable(functions, 'setUserRole');
-            await setUserRole({ userId, status });
+            await updateDoc(doc(db, 'users', userId), {
+                status,
+                updatedAt: serverTimestamp(),
+            });
             toast.success(`User ${status === 'blocked' ? 'blocked' : status === 'active' ? 'unblocked' : 'removed'}`);
             await loadStudents();
         } catch (err) {
-            toast.error(err.message || 'Failed to update status');
+            console.error('Status change error:', err);
+            toast.error('Failed to update status. Check Firestore rules.');
         } finally {
             setActionLoading(false);
             setShowModal(null);
