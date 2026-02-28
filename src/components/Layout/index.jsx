@@ -27,7 +27,7 @@ export default function Layout() {
                 {/* Logo */}
                 <div className="sidebar-header">
                     <div className="sidebar-logo">
-                        <Bell />
+                        <img src="/app_logo_padded.png" alt="SMS Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }} />
                     </div>
                     <div className="sidebar-brand">
                         <h2>SMS Notify</h2>

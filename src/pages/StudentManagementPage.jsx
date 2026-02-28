@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../config/firebase';
-import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import {
     Search, UserPlus, Shield, ShieldOff, UserX,
-    MoreVertical, Filter, Users
+    MoreVertical, Filter, Users, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { COURSES, courseDisplayName, detectCourse, extractEntranceYear, extractPassOutYear } from '../config/constants';
 
 const GRAD_CLASSES = ['grad-1', 'grad-2', 'grad-3', 'grad-4'];
 
@@ -14,9 +15,11 @@ export default function StudentManagementPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterCourse, setFilterCourse] = useState('all');
+    const [filterBatch, setFilterBatch] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
     const [showModal, setShowModal] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
+    const [syncingLoading, setSyncingLoading] = useState(false);
 
     useEffect(() => {
         loadStudents();
@@ -72,6 +75,58 @@ export default function StudentManagementPage() {
         }
     };
 
+    const handleSyncRollNumbers = async () => {
+        setSyncingLoading(true);
+        try {
+            let updatedCount = 0;
+            const batch = writeBatch(db);
+
+            for (const student of students) {
+                if (!student.rollNumber) continue;
+
+                const dbCourse = student.course;
+                const detectedCourse = detectCourse(student.rollNumber);
+                const entYear = extractEntranceYear(student.rollNumber);
+                const passYear = extractPassOutYear(student.rollNumber);
+
+                let needsUpdate = false;
+                const updateData = {};
+
+                if (detectedCourse && (!dbCourse || dbCourse !== detectedCourse)) {
+                    updateData.course = detectedCourse;
+                    needsUpdate = true;
+                }
+                if (entYear && student.entranceYear !== entYear) {
+                    updateData.entranceYear = entYear;
+                    needsUpdate = true;
+                }
+                if (passYear && student.passOutYear !== passYear) {
+                    updateData.passOutYear = passYear;
+                    needsUpdate = true;
+                }
+
+                if (needsUpdate) {
+                    updateData.updatedAt = serverTimestamp();
+                    batch.update(doc(db, 'users', student.id), updateData);
+                    updatedCount++;
+                }
+            }
+
+            if (updatedCount > 0) {
+                await batch.commit();
+                toast.success(`Successfully synced ${updatedCount} student records!`);
+                await loadStudents();
+            } else {
+                toast.success('All student records are already up-to-date!');
+            }
+        } catch (err) {
+            console.error('Sync error:', err);
+            toast.error('Failed to sync roll numbers.');
+        } finally {
+            setSyncingLoading(false);
+        }
+    };
+
     const getInitials = (name) => {
         if (!name) return '??';
         const parts = name.split(' ');
@@ -90,19 +145,25 @@ export default function StudentManagementPage() {
         const matchesCourse = filterCourse === 'all' || s.course === filterCourse;
         const matchesStatus = filterStatus === 'all' || s.status === filterStatus;
 
-        return matchesSearch && matchesCourse && matchesStatus;
+        let matchesBatch = true;
+        if (filterBatch !== 'all') {
+            const studentBatch = (s.entranceYear && s.passOutYear) ? `${s.entranceYear}-${s.passOutYear}` : 'none';
+            matchesBatch = studentBatch === filterBatch;
+        }
+
+        return matchesSearch && matchesCourse && matchesStatus && matchesBatch;
     });
 
-    const COURSES = [
-        { id: 'MBA', name: 'MBA' },
-        { id: 'MCA', name: 'MCA' },
-        { id: 'MCOM', name: 'M.COM' },
-        { id: 'BBA', name: 'BBA' },
-        { id: 'BCA', name: 'BCA' },
-        { id: 'BCOMH', name: 'B.COM (HONS)' },
-        { id: 'BAMASS', name: 'B.A.HONS (MASS COMM)' },
-    ];
-    const courseNameMap = Object.fromEntries(COURSES.map(c => [c.id, c.name]));
+    // Extract unique batches for the filter dropdown
+    const availableBatches = useMemo(() => {
+        const batches = new Set();
+        students.forEach(s => {
+            if (s.entranceYear && s.passOutYear) {
+                batches.add(`${s.entranceYear}-${s.passOutYear}`);
+            }
+        });
+        return Array.from(batches).sort().reverse();
+    }, [students]);
 
     return (
         <div>
@@ -117,8 +178,8 @@ export default function StudentManagementPage() {
             </div>
 
             {/* Toolbar */}
-            <div className="toolbar">
-                <div className="toolbar-left">
+            <div className="toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="toolbar-left" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <div className="search-input">
                         <Search />
                         <input
@@ -140,6 +201,16 @@ export default function StudentManagementPage() {
                     </select>
                     <select
                         className="filter-select"
+                        value={filterBatch}
+                        onChange={(e) => setFilterBatch(e.target.value)}
+                    >
+                        <option value="all">All Batches</option>
+                        {availableBatches.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                        ))}
+                    </select>
+                    <select
+                        className="filter-select"
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
                     >
@@ -149,6 +220,15 @@ export default function StudentManagementPage() {
                         <option value="removed">Removed</option>
                     </select>
                 </div>
+                <button
+                    className="btn btn-secondary"
+                    onClick={handleSyncRollNumbers}
+                    disabled={syncingLoading}
+                    style={{ display: 'flex', gap: 8, alignItems: 'center', height: 42 }}
+                >
+                    <RefreshCw size={16} className={syncingLoading ? 'spin' : ''} />
+                    {syncingLoading ? 'Syncing...' : 'Sync Roll Numbers'}
+                </button>
             </div>
 
             {/* Table */}
@@ -197,8 +277,8 @@ export default function StudentManagementPage() {
                                         <td style={{ fontFamily: 'monospace', letterSpacing: 0.5 }}>
                                             {student.rollNumber || '—'}
                                         </td>
-                                        <td>{courseNameMap[student.course] || student.course || '—'}</td>
-                                        <td>{student.entranceYear && student.passOutYear ? `${student.entranceYear}–${student.passOutYear}` : '—'}</td>
+                                        <td>{courseDisplayName(student.course)}</td>
+                                        <td>{student.entranceYear && student.passOutYear ? `${student.entranceYear}-${student.passOutYear}` : '—'}</td>
                                         <td>
                                             <span className={`badge ${student.role === 'admin' ? 'badge-warning' : student.role === 'student' ? 'badge-primary' : 'badge-muted'}`}>
                                                 {student.role || 'guest'}

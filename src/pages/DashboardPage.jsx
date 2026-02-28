@@ -9,14 +9,9 @@ import {
     AreaChart, Area, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import { courseDisplayName } from '../config/constants';
 
 const COLORS = ['#6c63ff', '#00d2ff', '#ff6b6b', '#ffab40', '#00e676', '#9c27b0', '#e91e63', '#795548'];
-
-// Course ID → Display name
-const COURSE_NAMES = {
-    MBA: 'MBA', MCA: 'MCA', MCOM: 'M.COM', BBA: 'BBA', BCA: 'BCA',
-    BCOMH: 'B.COM (HONS)', BAMASS: 'B.A.HONS (MASS COMM)',
-};
 
 const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
@@ -64,7 +59,10 @@ export default function DashboardPage() {
                 if (user.role === 'student' || user.role === 'guest') {
                     totalStudents++;
                     if (user.status === 'active') activeStudents++;
-                    const courseName = COURSE_NAMES[user.course] || user.course || 'Other';
+                    let courseName = 'Other';
+                    if (user.course) {
+                        courseName = courseDisplayName(user.course);
+                    }
                     if (courseName) {
                         courses[courseName] = (courses[courseName] || 0) + 1;
                     }
@@ -312,8 +310,10 @@ export default function DashboardPage() {
                                         <td>
                                             <span className="badge badge-muted">
                                                 {n.targetAudience?.type === 'course'
-                                                    ? (n.targetAudience.courses || []).map(c => COURSE_NAMES[c] || c).join(', ')
-                                                    : n.targetAudience?.type || 'all'}
+                                                    ? (n.targetAudience.courses || []).map(c => courseDisplayName(c)).join(', ')
+                                                    : n.targetAudience?.type === 'batch'
+                                                        ? (n.targetAudience.batches || []).join(', ')
+                                                        : n.targetAudience?.type || 'all'}
                                             </span>
                                         </td>
                                         <td>{n.analytics?.totalRecipients || 0}</td>

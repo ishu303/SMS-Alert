@@ -1,20 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { db, auth, storage } from '../config/firebase';
 import { collection, addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Send, AlertCircle, CheckCircle2, Paperclip, X, Image, FileText, Film, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-// ── Exact courses ────────────────────────────────────────────────
-const COURSES = [
-    { id: 'MBA', name: 'MBA' },
-    { id: 'MCA', name: 'MCA' },
-    { id: 'MCOM', name: 'M.COM' },
-    { id: 'BBA', name: 'BBA' },
-    { id: 'BCA', name: 'BCA' },
-    { id: 'BCOMH', name: 'B.COM (HONS)' },
-    { id: 'BAMASS', name: 'B.A.HONS (MASS COMMUNICATION)' },
-];
+import { COURSES } from '../config/constants';
 
 const TYPES = [
     { value: 'announcement', label: '📢 Announcement' },
@@ -35,6 +25,7 @@ const AUDIENCE_TYPES = [
     { value: 'all', label: '🌍 All (students + guests)' },
     { value: 'students', label: '🎓 All Students (no guests)' },
     { value: 'course', label: '🎯 Specific Course(s)' },
+    { value: 'batch', label: '📅 Specific Batch(es)' },
     { value: 'guest', label: '👤 Guests Only' },
 ];
 
@@ -60,6 +51,7 @@ export default function ComposeNotificationPage() {
         priority: 'medium',
         audienceType: 'all',
         courses: [],
+        batches: [],
     });
     const [attachments, setAttachments] = useState([]); // [{file, type, preview}]
     const [uploadProgress, setUploadProgress] = useState(null); // 0-100
@@ -67,6 +59,26 @@ export default function ComposeNotificationPage() {
     const [result, setResult] = useState(null);
     const [showConfirm, setShowConfirm] = useState(false);
     const fileInputRef = useRef(null);
+    const [availableBatches, setAvailableBatches] = useState([]);
+
+    useEffect(() => {
+        const fetchBatches = async () => {
+            try {
+                const snap = await getDocs(query(collection(db, 'users')));
+                const batchesSet = new Set();
+                snap.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.entranceYear && data.passOutYear) {
+                        batchesSet.add(`${data.entranceYear}-${data.passOutYear}`);
+                    }
+                });
+                setAvailableBatches(Array.from(batchesSet).sort().reverse());
+            } catch (err) {
+                console.error('Error fetching batches:', err);
+            }
+        };
+        fetchBatches();
+    }, []);
 
     const handleChange = (field, value) => {
         setForm(prev => ({ ...prev, [field]: value }));
@@ -79,6 +91,15 @@ export default function ComposeNotificationPage() {
             courses: prev.courses.includes(courseId)
                 ? prev.courses.filter(c => c !== courseId)
                 : [...prev.courses, courseId],
+        }));
+    };
+
+    const toggleBatch = (batchId) => {
+        setForm(prev => ({
+            ...prev,
+            batches: prev.batches.includes(batchId)
+                ? prev.batches.filter(b => b !== batchId)
+                : [...prev.batches, batchId],
         }));
     };
 
@@ -162,6 +183,10 @@ export default function ComposeNotificationPage() {
             toast.error('Please select at least one course');
             return;
         }
+        if (form.audienceType === 'batch' && form.batches.length === 0) {
+            toast.error('Please select at least one batch');
+            return;
+        }
         setShowConfirm(true);
     };
 
@@ -170,6 +195,7 @@ export default function ComposeNotificationPage() {
         if (form.audienceType === 'students') return 'All Students';
         if (form.audienceType === 'guest') return 'Guests Only';
         if (form.audienceType === 'course') return form.courses.map(c => COURSES.find(x => x.id === c)?.name || c).join(', ');
+        if (form.audienceType === 'batch') return form.batches.join(', ');
         return 'All';
     };
 
@@ -194,11 +220,17 @@ export default function ComposeNotificationPage() {
             const usersSnap = await getDocs(usersQ);
             let targetUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
 
-            if (form.audienceType === 'students' || form.audienceType === 'course') {
+            if (form.audienceType === 'students' || form.audienceType === 'course' || form.audienceType === 'batch') {
                 targetUsers = targetUsers.filter(u => u.role === 'student');
             }
             if (form.audienceType === 'course' && form.courses.length > 0) {
                 targetUsers = targetUsers.filter(u => form.courses.includes(u.course));
+            }
+            if (form.audienceType === 'batch' && form.batches.length > 0) {
+                targetUsers = targetUsers.filter(u => {
+                    if (!u.entranceYear || !u.passOutYear) return false;
+                    return form.batches.includes(`${u.entranceYear}-${u.passOutYear}`);
+                });
             }
             if (form.audienceType === 'guest') {
                 targetUsers = targetUsers.filter(u => u.role === 'guest');
@@ -208,6 +240,7 @@ export default function ComposeNotificationPage() {
             const targetAudience = {
                 type: form.audienceType,
                 ...(form.audienceType === 'course' && { courses: form.courses }),
+                ...(form.audienceType === 'batch' && { batches: form.batches }),
             };
 
             // 4️⃣ Save to Firestore
@@ -234,7 +267,7 @@ export default function ComposeNotificationPage() {
             toast.success(`Notification saved — ${targetUsers.length} recipient(s) targeted.`);
 
             // Reset form
-            setForm({ title: '', body: '', type: 'announcement', priority: 'medium', audienceType: 'all', courses: [] });
+            setForm({ title: '', body: '', type: 'announcement', priority: 'medium', audienceType: 'all', courses: [], batches: [] });
             setAttachments([]);
         } catch (err) {
             console.error(err);
@@ -340,6 +373,33 @@ export default function ComposeNotificationPage() {
                             {form.courses.length === 0 && (
                                 <p style={{ fontSize: 12, color: 'var(--error)', marginTop: 6 }}>
                                     ⚠ Please select at least one course.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Batch picker (shown only for 'batch' audience) */}
+                    {form.audienceType === 'batch' && (
+                        <div className="form-group">
+                            <label className="form-label">Select Batch(es)</label>
+                            {availableBatches.length > 0 ? (
+                                <div className="checkbox-group">
+                                    {availableBatches.map(b => (
+                                        <label key={b} className={`checkbox-chip ${form.batches.includes(b) ? 'selected' : ''}`}>
+                                            <input type="checkbox" checked={form.batches.includes(b)}
+                                                onChange={() => toggleBatch(b)} />
+                                            {b}
+                                        </label>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                                    No batches found. Students must have entrance & pass-out years updated.
+                                </p>
+                            )}
+                            {form.batches.length === 0 && availableBatches.length > 0 && (
+                                <p style={{ fontSize: 12, color: 'var(--error)', marginTop: 6 }}>
+                                    ⚠ Please select at least one batch.
                                 </p>
                             )}
                         </div>

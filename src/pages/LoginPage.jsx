@@ -55,7 +55,7 @@ export default function LoginPage() {
         <div className="login-page">
             <div className="login-card">
                 <div className="login-logo">
-                    <Bell />
+                    <img src="/app_logo_padded.png" alt="SMS Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '12px' }} />
                 </div>
                 <h1 className="login-title">SMS Notify</h1>
                 <p className="login-subtitle">Admin Dashboard</p>
